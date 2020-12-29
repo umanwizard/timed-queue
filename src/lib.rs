@@ -2,6 +2,7 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 use std::time::Instant;
 
 use tokio::sync::Notify;
@@ -52,38 +53,48 @@ where
         self.inner.notify.notify_one();
     }
 
+    fn peek_inner(&self) -> Result<(T, Option<Instant>), Option<Duration>> {
+        let now = Instant::now();
+        let mut lock = self.inner.storage.lock().unwrap();
+        let (ready, duration) = match lock.peek() {
+            Some(Item {
+                expiration: Some(Reverse(expiration)),
+                ..
+            }) => {
+                if *expiration < now {
+                    (true, None)
+                } else {
+                    (false, Some(*expiration - now))
+                }
+            }
+            Some(Item {
+                expiration: None, ..
+            }) => (true, None),
+            None => (false, None),
+        };
+        if ready {
+            let Item {
+                expiration,
+                inner: item,
+            } = lock.pop().unwrap();
+            Ok((item, expiration.map(|Reverse(expiration)| expiration)))
+        } else {
+            Err(duration)
+        }
+    }
+
     pub async fn dequeue(&self) -> (T, Option<Instant>) {
         loop {
-            let now = Instant::now();
-            let mut lock = self.inner.storage.lock().unwrap();
-            let (ready, duration) = match lock.peek() {
-                Some(Item {
-                    expiration: Some(Reverse(expiration)),
-                    ..
-                }) => {
-                    if *expiration < now {
-                        (true, None)
-                    } else {
-                        (false, Some(*expiration - now))
-                    }
+            match self.peek_inner() {
+                Ok((item, duration)) => {
+                    break (item, duration);
                 }
-                Some(Item {
-                    expiration: None, ..
-                }) => (true, None),
-                None => (false, None),
-            };
-            if ready {
-                let Item {
-                    expiration,
-                    inner: item,
-                } = lock.pop().unwrap();
-                break (item, expiration.map(|Reverse(expiration)| expiration));
-            }
-            std::mem::drop(lock);
-            if let Some(duration) = duration {
-                let _ = timeout(duration, self.inner.notify.notified()).await;
-            } else {
-                self.inner.notify.notified().await;
+                Err(Some(duration)) => {
+                    let _ = timeout(duration, self.inner.notify.notified()).await;
+                }
+                Err(None) => {
+                    self.inner.notify.notified().await;
+                }
             }
         }
     }
