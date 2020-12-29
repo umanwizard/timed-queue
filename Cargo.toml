@@ -1,10 +1,10 @@
 [package]
 name = "timed-queue"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Brennan Vincent <brennan@umanwizard.com>"]
 edition = "2018"
 license = "MIT"
-description = "Maintain a queue of items based on the time they should be returned"
+description = "Maintain a set of objects and the minimum time at which they should be returned."
 repository = "https://github.com/umanwizard/timed-queue"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
