@@ -1,3 +1,33 @@
+//! `timed-queue` provides `TimedQueue`, a set of objects and the minimum time at which they should be returned.
+//!
+//! # Example
+//! Imagine the "new messages" queue of an SMTP server implementation. Delivery should be attempted immediately for new messages.
+//! Messages for which delivery fails should be retried after 30 minutes.
+//!
+//!```
+//! fn server_loop<I: IntoIterator<Item = MailMessage>>(tq: TimedQueue<MailMessage>, messages: I) {
+//!     for m in messages {
+//!         tq.enqueue(m, None);
+//!     }
+//! }
+//!
+//! async fn delivery_loop(tq: TimedQueue<MailMessage>) {
+//!     loop {
+//!         let (msg, _) = tq.dequeue().await;
+//!         if try_deliver(msg).await.is_err() {
+//!             tq.enqueue(msg, Some(Instant::now() + Duration::from_secs(30 * 60)));
+//!         }
+//!     }
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let tq = TimedQueue::new();
+//!     let tq2 = tq.clone();
+//!     std::thread::spawn(move || server_loop(tq, get_message_stream()));
+//!     tokio::spawn(delivery_loop(tq2));
+//! }
+//! ```
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::sync::Arc;
