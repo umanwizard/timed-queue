@@ -13,7 +13,7 @@ struct Item<T>
 where
     T: Ord,
 {
-    expiration: Option<Reverse<Instant>>,
+    expiration: Reverse<Option<Instant>>,
     inner: T,
 }
 
@@ -47,7 +47,7 @@ where
     }
     pub fn enqueue(&self, t: T, expiration: Option<Instant>) {
         self.inner.storage.lock().unwrap().push(Item {
-            expiration: expiration.map(|e| Reverse(e)),
+            expiration: Reverse(expiration),
             inner: t,
         });
         self.inner.notify.notify_one();
@@ -58,7 +58,7 @@ where
         let mut lock = self.inner.storage.lock().unwrap();
         let (ready, duration) = match lock.peek() {
             Some(Item {
-                expiration: Some(Reverse(expiration)),
+                expiration: Reverse(Some(expiration)),
                 ..
             }) => {
                 if *expiration < now {
@@ -68,16 +68,17 @@ where
                 }
             }
             Some(Item {
-                expiration: None, ..
+                expiration: Reverse(None),
+                ..
             }) => (true, None),
             None => (false, None),
         };
         if ready {
             let Item {
-                expiration,
+                expiration: Reverse(expiration),
                 inner: item,
             } = lock.pop().unwrap();
-            Ok((item, expiration.map(|Reverse(expiration)| expiration)))
+            Ok((item, expiration))
         } else {
             Err(duration)
         }
